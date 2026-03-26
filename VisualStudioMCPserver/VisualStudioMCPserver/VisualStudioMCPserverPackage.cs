@@ -2,7 +2,6 @@ using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Shell.Interop;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -18,13 +17,13 @@ namespace VisualStudioMCPserver
     /// </summary>
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [Guid(PackageGuidString)]
-    [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string,     PackageAutoLoadFlags.BackgroundLoad)]
+    [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionExists_string, PackageAutoLoadFlags.BackgroundLoad)]
     public sealed class VisualStudioMCPserverPackage : AsyncPackage
     {
         public const string PackageGuidString = "e6ef9e43-b163-4ee0-811d-5dd444b2d20f";
 
-        private DTE2           _dte;
+        private DTE2 _dte;
         private SolutionEvents _solutionEvents;   // field keeps the COM reference alive (DTE uses weak refs)
         private System.Diagnostics.Process _serverProcess;
 
@@ -37,8 +36,8 @@ namespace VisualStudioMCPserver
             if (_dte == null) return;
 
             // Subscribe to solution events – keep the reference in a field!
-            _solutionEvents               = _dte.Events.SolutionEvents;
-            _solutionEvents.Opened       += OnSolutionOpened;
+            _solutionEvents = _dte.Events.SolutionEvents;
+            _solutionEvents.Opened += OnSolutionOpened;
             _solutionEvents.AfterClosing += OnSolutionClosed;
 
             // If a solution is already open when the package loads, start right away.
@@ -77,20 +76,20 @@ namespace VisualStudioMCPserver
 
             var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName               = serverExe,
-                Arguments              = $"\"{solutionPath}\" {System.Diagnostics.Process.GetCurrentProcess().Id}",
-                UseShellExecute        = false,
-                CreateNoWindow         = true,
+                FileName = serverExe,
+                Arguments = $"\"{solutionPath}\" {System.Diagnostics.Process.GetCurrentProcess().Id}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError  = true,
+                RedirectStandardError = true,
             };
 
             _serverProcess = new System.Diagnostics.Process();
-            _serverProcess.StartInfo          = psi;
+            _serverProcess.StartInfo = psi;
             _serverProcess.EnableRaisingEvents = true;
             _serverProcess.OutputDataReceived += (s, e) => Debug.WriteLine("[MCPServer] " + e.Data);
-            _serverProcess.ErrorDataReceived  += (s, e) => Debug.WriteLine("[MCPServer ERR] " + e.Data);
-            _serverProcess.Exited             += (s, e) => Debug.WriteLine("[MCPServer] Process exited.");
+            _serverProcess.ErrorDataReceived += (s, e) => Debug.WriteLine("[MCPServer ERR] " + e.Data);
+            _serverProcess.Exited += (s, e) => Debug.WriteLine("[MCPServer] Process exited.");
 
             _serverProcess.Start();
             _serverProcess.BeginOutputReadLine();

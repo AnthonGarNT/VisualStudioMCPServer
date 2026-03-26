@@ -1,4 +1,3 @@
-using MCPServer;
 using MCPServer.Tools;
 
 namespace MCPServer;

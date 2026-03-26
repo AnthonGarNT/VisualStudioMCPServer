@@ -1,6 +1,6 @@
+using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Xml.Linq;
-using ModelContextProtocol.Server;
 
 namespace MCPServer.Tools;
 
@@ -19,8 +19,8 @@ public class SolutionTools
         return Path.GetExtension(path).ToLowerInvariant() switch
         {
             ".slnx" => ParseSlnxProjects(path),
-            ".sln"  => ParseSlnProjects(path),
-            _       => $"Unsupported solution format: {Path.GetExtension(path)}"
+            ".sln" => ParseSlnProjects(path),
+            _ => $"Unsupported solution format: {Path.GetExtension(path)}"
         };
     }
 
@@ -39,7 +39,7 @@ public class SolutionTools
             return "No solution is loaded or the solution file could not be found.";
 
         var solutionDir = Path.GetDirectoryName(path)!;
-        var pattern     = string.IsNullOrWhiteSpace(extension) ? "*.*" : $"*{extension}";
+        var pattern = string.IsNullOrWhiteSpace(extension) ? "*.*" : $"*{extension}";
 
         var ignoredSegments = new[] { Path.DirectorySeparatorChar + "bin"  + Path.DirectorySeparatorChar,
                                       Path.DirectorySeparatorChar + "obj"  + Path.DirectorySeparatorChar,
@@ -63,7 +63,7 @@ public class SolutionTools
 
     private static string ParseSlnxProjects(string slnxPath)
     {
-        var doc      = XDocument.Load(slnxPath);
+        var doc = XDocument.Load(slnxPath);
         var projects = doc.Descendants("Project")
                           .Select(p => p.Attribute("Path")?.Value)
                           .Where(p => !string.IsNullOrWhiteSpace(p))
