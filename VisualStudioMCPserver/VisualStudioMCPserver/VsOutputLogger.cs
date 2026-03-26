@@ -4,8 +4,6 @@ using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Threading;
 using System;
 using System.IO;
-using VisualStudioMCPServer.Shared;
-
 namespace VisualStudioMCPserver
 {
     /// <summary>
@@ -16,7 +14,7 @@ namespace VisualStudioMCPserver
     {
         private readonly IVsOutputWindowPane _pane;
         private readonly JoinableTaskFactory _jtf;
-        private readonly StreamWriter        _fileWriter;
+        private readonly StreamWriter _fileWriter;
 
         /// <summary>
         /// Initialises the logger, creating the Output pane and log file if they do not exist.
@@ -29,9 +27,9 @@ namespace VisualStudioMCPserver
         /// safe for use inside Visual Studio extensions.
         /// </param>
         /// <param name="settings">
-        /// Settings read from <c>appsettings.json</c>; defaults are used when <see langword="null"/>.
+        /// Settings read from <c>vsix-settings.json</c>; defaults are used when <see langword="null"/>.
         /// </param>
-        public VsOutputLogger(IVsOutputWindow outputWindow, JoinableTaskFactory jtf, McpServerOptions settings = null)
+        public VsOutputLogger(IVsOutputWindow outputWindow, JoinableTaskFactory jtf, VsixOptions settings = null)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -45,9 +43,9 @@ namespace VisualStudioMCPserver
                 throw new ArgumentNullException(nameof(jtf));
             }
 
-            settings    = settings ?? new McpServerOptions();
-            _jtf        = jtf;
-            _pane       = GetOrCreatePane(outputWindow, settings.PaneName);
+            settings = settings ?? new VsixOptions();
+            _jtf = jtf;
+            _pane = GetOrCreatePane(outputWindow, settings.PaneName);
             _fileWriter = CreateFileWriter(settings.LogFolder, settings.LogFile);
         }
 

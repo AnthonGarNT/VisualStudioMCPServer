@@ -1,0 +1,8 @@
+{
+  "VsixOptions": {
+    "Port": 5010,
+    "PaneName": "MCP Server",
+    "LogFolder": "VisualStudioMCPServer",
+    "LogFile": "mcpserver.log"
+  }
+}

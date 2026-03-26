@@ -1,55 +1,50 @@
 using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
-using VisualStudioMCPServer.Shared;
 
 namespace VisualStudioMCPserver
 {
     /// <summary>
-    /// Reads MCPServer's <c>appsettings.json</c> from the folder that contains
-    /// <c>MCPServer.exe</c> and returns a populated <see cref="McpServerOptions"/> instance.
+    /// Reads the VSIX's own <c>vsix-settings.json</c> from the extension directory and returns
+    /// a populated <see cref="VsixOptions"/> instance.
     /// Falls back to default values silently on any failure so the VSIX always starts.
     /// </summary>
     internal static class AppSettingsReader
     {
-        private const string FileName    = "appsettings.json";
-        private const string SectionName = "McpServer";
+        private const string FileName = "vsix-settings.json";
 
         /// <summary>
-        /// Loads settings from the <c>appsettings.json</c> file that lives next to
-        /// <paramref name="serverExePath"/>.
+        /// Loads settings from <c>vsix-settings.json</c> located in <paramref name="vsixDir"/>.
         /// </summary>
-        /// <param name="serverExePath">Full path to <c>MCPServer.exe</c>.</param>
+        /// <param name="vsixDir">Directory that contains the VSIX extension DLL.</param>
         /// <returns>
-        /// Populated <see cref="McpServerOptions"/>; defaults are used for any missing or
+        /// Populated <see cref="VsixOptions"/>; defaults are used for any missing or
         /// unparseable values.
         /// </returns>
-        public static McpServerOptions Read(string serverExePath)
+        public static VsixOptions Read(string vsixDir)
         {
             try
             {
-                string serverDir = Path.GetDirectoryName(serverExePath);
-
-                if (string.IsNullOrEmpty(serverDir) || !Directory.Exists(serverDir))
+                if (string.IsNullOrEmpty(vsixDir) || !Directory.Exists(vsixDir))
                 {
-                    return new McpServerOptions();
+                    return new VsixOptions();
                 }
 
                 IConfiguration config = new ConfigurationBuilder()
-                    .SetBasePath(serverDir)
+                    .SetBasePath(vsixDir)
                     .AddJsonFile(FileName, optional: true, reloadOnChange: false)
                     .Build();
 
-                McpServerOptions options = config
-                    .GetSection(SectionName)
-                    .Get<McpServerOptions>() ?? new McpServerOptions();
+                VsixOptions options = config
+                    .GetSection(VsixOptions.SectionName)
+                    .Get<VsixOptions>() ?? new VsixOptions();
 
                 return options;
             }
             catch (Exception)
             {
                 // Never let a config failure prevent the extension from loading.
-                return new McpServerOptions();
+                return new VsixOptions();
             }
         }
     }

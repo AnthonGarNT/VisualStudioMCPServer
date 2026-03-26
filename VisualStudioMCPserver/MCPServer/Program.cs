@@ -1,6 +1,4 @@
 using MCPServer.Tools;
-using Microsoft.Extensions.Options;
-using VisualStudioMCPServer.Shared;
 
 namespace MCPServer;
 
@@ -8,16 +6,17 @@ internal sealed class Program
 {
     private static async Task Main(string[] args)
     {
-        SolutionContext.SolutionFilePath = args.Length > 0 ? args[0] : string.Empty;
+        CommandLineArgs cliArgs = CommandLineArgs.Parse(args);
 
-        WebApplication app = BuildHost(args);
+        SolutionContext.SolutionFilePath = cliArgs.SolutionPath;
+
+        WebApplication app = BuildHost(args, cliArgs.Port);
 
         ILogger<Program> logger = app.Services.GetRequiredService<ILogger<Program>>();
 
-        WatchParentProcess(args, logger);
+        WatchParentProcess(cliArgs.ParentPid, logger);
 
-        McpServerOptions options = app.Services.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        logger.LogInformation("MCP Server listening on http://localhost:{Port}", options.Port);
+        logger.LogInformation("MCP Server listening on http://localhost:{Port}", cliArgs.Port);
         logger.LogInformation("Solution: {SolutionPath}",
             string.IsNullOrWhiteSpace(SolutionContext.SolutionFilePath)
                 ? "(none)"
@@ -27,14 +26,13 @@ internal sealed class Program
     }
 
     /// <summary>
-    /// Reads the parent VS process ID from <paramref name="args"/>[1] and starts a background
-    /// watcher that shuts this process down when the parent VS instance exits.
+    /// Watches the parent VS process and shuts this process down when it exits.
     /// </summary>
-    /// <param name="args">Command-line arguments passed at startup.</param>
+    /// <param name="parentPid">Process ID of the parent Visual Studio instance. 0 means no parent.</param>
     /// <param name="logger">Logger used to report lifecycle events.</param>
-    private static void WatchParentProcess(string[] args, ILogger<Program> logger)
+    private static void WatchParentProcess(int parentPid, ILogger<Program> logger)
     {
-        if (args.Length < 2 || !int.TryParse(args[1], out int parentPid))
+        if (parentPid <= 0)
         {
             return;
         }
@@ -62,8 +60,9 @@ internal sealed class Program
     /// Configures and builds the ASP.NET Core / MCP web application.
     /// </summary>
     /// <param name="args">Command-line arguments forwarded to the host builder.</param>
+    /// <param name="port">TCP port the server should bind to.</param>
     /// <returns>A fully configured <see cref="WebApplication"/> ready to run.</returns>
-    private static WebApplication BuildHost(string[] args)
+    private static WebApplication BuildHost(string[] args, int port)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -76,18 +75,9 @@ internal sealed class Program
             .WithHttpTransport()
             .WithTools<SolutionTools>();
 
-        // Bind the McpServer config section so the port is driven by appsettings.json.
-        McpServerOptions options = builder.Configuration
-            .GetSection(McpServerOptions.SectionName)
-            .Get<McpServerOptions>() ?? new McpServerOptions();
-
-        builder.Services.Configure<McpServerOptions>(
-            builder.Configuration.GetSection(McpServerOptions.SectionName));
-
-        builder.WebHost.UseUrls($"http://localhost:{options.Port}");
-
         WebApplication app = builder.Build();
 
+        app.Urls.Add($"http://localhost:{port}");
         app.MapMcp();   // registers /sse and /messages endpoints
 
         return app;

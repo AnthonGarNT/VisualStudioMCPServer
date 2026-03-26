@@ -1,5 +1,4 @@
 using EnvDTE;
-using VisualStudioMCPServer.Shared;
 using EnvDTE80;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
@@ -29,7 +28,7 @@ namespace VisualStudioMCPserver
         private SolutionEvents _solutionEvents;   // field keeps the COM reference alive (DTE uses weak refs)
         private System.Diagnostics.Process _serverProcess;
         private VsOutputLogger _logger;
-        private McpServerOptions _settings;
+        private VsixOptions _settings;
 
         /// <inheritdoc/>
         protected override async Task InitializeAsync(CancellationToken cancellationToken,
@@ -46,8 +45,8 @@ namespace VisualStudioMCPserver
                 throw new InvalidOperationException("SVsOutputWindow service is unavailable.");
             }
 
-            _settings = AppSettingsReader.Read(GetServerExePath());
-            _logger   = new VsOutputLogger(outputWindow, JoinableTaskFactory, _settings);
+            _settings = AppSettingsReader.Read(GetExtensionDir());
+            _logger = new VsOutputLogger(outputWindow, JoinableTaskFactory, _settings);
 
             _dte = (DTE2)await GetServiceAsync(typeof(DTE));
             if (_dte == null)
@@ -97,10 +96,10 @@ namespace VisualStudioMCPserver
             }
 
             int parentPid = System.Diagnostics.Process.GetCurrentProcess().Id;
-            var psi = new System.Diagnostics.ProcessStartInfo
+            System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = serverExe,
-                Arguments = $"\"{solutionPath}\" {parentPid}", // Pass the solution path and parent PID as arguments
+                Arguments = $"\"{solutionPath}\" {parentPid} {_settings.Port}",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -108,9 +107,9 @@ namespace VisualStudioMCPserver
             };
 
             _serverProcess = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
-            _serverProcess.OutputDataReceived += (s, e) => { if (e.Data != null) _logger.Log(e.Data); };
-            _serverProcess.ErrorDataReceived += (s, e) => { if (e.Data != null) _logger.LogError(e.Data); };
-            _serverProcess.Exited += (s, e) => _logger.Log("MCPServer process exited.");
+            _serverProcess.OutputDataReceived += (s, e) => { if (e.Data != null) { _logger.Log(e.Data); } };
+            _serverProcess.ErrorDataReceived  += (s, e) => { if (e.Data != null) { _logger.LogError(e.Data); } };
+            _serverProcess.Exited             += (s, e) => _logger.Log("MCPServer process exited.");
 
             try
             {
@@ -159,6 +158,18 @@ namespace VisualStudioMCPserver
             }
         }
 
+        // ── Path helpers ──────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns the directory that contains this extension's DLL.
+        /// Used to locate <c>vsix-settings.json</c> and <c>MCPServer\MCPServer.exe</c>.
+        /// </summary>
+        private static string GetExtensionDir()
+        {
+            return Path.GetDirectoryName(
+                typeof(VisualStudioMCPserverPackage).Assembly.Location) ?? string.Empty;
+        }
+
         /// <summary>
         /// Resolves the full path to MCPServer.exe.
         /// The VSIX content items deploy the MCPServer build output into a <c>MCPServer\</c>
@@ -166,10 +177,7 @@ namespace VisualStudioMCPserver
         /// </summary>
         private static string GetServerExePath()
         {
-            string extensionDir = Path.GetDirectoryName(
-                typeof(VisualStudioMCPserverPackage).Assembly.Location) ?? string.Empty;
-
-            return Path.Combine(extensionDir, "MCPServer", "MCPServer.exe");
+            return Path.Combine(GetExtensionDir(), "MCPServer", "MCPServer.exe");
         }
 
         /// <inheritdoc/>

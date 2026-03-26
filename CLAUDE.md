@@ -59,22 +59,15 @@
 - Catch specific exceptions, not `Exception` unless re-throwing or at a top-level boundary
 - Use `finally` to release resources; prefer `using` declarations over manual `Dispose` calls
 
+## Formatting
+
+- Do not use extra spaces or tabs to manually align code — no column-aligning of assignments, declarations, or parameters
+- ReSharper handles formatting; write code naturally and let the tool enforce style
+
 ## Braces
 
 - Always use curly braces for every block body — `if`, `else`, `for`, `foreach`, `while`, `using`, `try`, `catch`, `finally` — even when the body is a single statement
 - Never omit braces for one-liners; this prevents accidental bugs when adding a second statement later
-
-```csharp
-// Correct
-if (condition)
-{
-    DoSomething();
-}
-
-// Wrong
-if (condition)
-    DoSomething();
-```
 
 ## Classes & Structure
 
