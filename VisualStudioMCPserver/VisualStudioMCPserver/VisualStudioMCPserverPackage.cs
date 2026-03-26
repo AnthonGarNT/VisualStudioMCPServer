@@ -78,7 +78,7 @@ namespace VisualStudioMCPserver
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName               = serverExe,
-                Arguments              = "\"" + solutionPath + "\"",
+                Arguments              = $"\"{solutionPath}\" {System.Diagnostics.Process.GetCurrentProcess().Id}",
                 UseShellExecute        = false,
                 CreateNoWindow         = true,
                 RedirectStandardOutput = true,
@@ -123,14 +123,16 @@ namespace VisualStudioMCPserver
         }
 
         /// <summary>
-        /// MCPServer.exe is expected to sit next to this extension's DLL inside the VSIX layout.
+        /// Resolves the path to MCPServer.exe.
+        /// The post-build event copies the MCPServer build output into a MCPServer\
+        /// sub-folder next to this extension's DLL, for both Debug and Release.
         /// </summary>
         private static string GetServerExePath()
         {
             var extensionDir = Path.GetDirectoryName(
                 typeof(VisualStudioMCPserverPackage).Assembly.Location) ?? string.Empty;
 
-            return Path.Combine(extensionDir, "MCPServer.exe");
+            return Path.Combine(extensionDir, "MCPServer", "MCPServer.exe");
         }
 
         protected override void Dispose(bool disposing)

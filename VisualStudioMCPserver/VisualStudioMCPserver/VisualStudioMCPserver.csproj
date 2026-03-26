@@ -61,13 +61,29 @@
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.0.32112.339" ExcludeAssets="runtime" NoWarn="NU1604" />
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.14.2120" NoWarn="NU1604" />
   </ItemGroup>
+  <!--
+    Include MCPServer's build output inside the VSIX package under a MCPServer\ sub-folder.
+    This ensures the files are deployed to the experimental hive (F5 debug) and to any
+    installed instance. $(ConfigurationName) picks Debug or Release automatically.
+    NOTE: MCPServer must be built before this project (set via Project Dependencies).
+  -->
+  <ItemGroup>
+    <Content Include="$(MSBuildProjectDirectory)\..\MCPServer\bin\$(ConfigurationName)\net8.0\**\*">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>MCPServer\</VSIXSubPath>
+      <Visible>false</Visible>
+    </Content>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="'$(VSToolsPath)' != ''" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
+  <PropertyGroup>
+    <!--
+      Post-build: also mirror MCPServer into this project's $(OutDir) so the files
+      are available locally (e.g. for direct exe inspection without deploying the VSIX).
+      $(ConfigurationName) expands to Debug or Release automatically.
+    -->
+    <PostBuildEvent>
+      xcopy /Y /I /E "$(SolutionDir)MCPServer\bin\$(ConfigurationName)\net8.0" "$(OutDir)MCPServer"
+    </PostBuildEvent>
+  </PropertyGroup>
 </Project>
