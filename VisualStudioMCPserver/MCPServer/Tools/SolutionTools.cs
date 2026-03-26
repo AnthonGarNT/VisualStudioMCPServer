@@ -7,19 +7,14 @@ namespace MCPServer.Tools;
 /// <summary>
 /// MCP tools that expose Visual Studio solution structure to AI clients.
 /// </summary>
+/// <remarks>
+/// Initialises the tool class with its required dependencies.
+/// </remarks>
+/// <param name="logger">Logger for recording tool invocations and errors.</param>
 [McpServerToolType]
-public sealed class SolutionTools
+public sealed class SolutionTools(ILogger<SolutionTools> logger)
 {
-    private readonly ILogger<SolutionTools> _logger;
-
-    /// <summary>
-    /// Initialises the tool class with its required dependencies.
-    /// </summary>
-    /// <param name="logger">Logger for recording tool invocations and errors.</param>
-    public SolutionTools(ILogger<SolutionTools> logger)
-    {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+    private readonly ILogger<SolutionTools> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     /// <summary>Lists all projects in the currently open Visual Studio solution.</summary>
     [McpServerTool]

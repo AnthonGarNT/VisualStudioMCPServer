@@ -93,6 +93,10 @@ namespace VisualStudioMCPserver
 
             outputWindow.CreatePane(ref paneGuid, PaneName, fInitVisible: 1, fClearWithSolution: 0);
             outputWindow.GetPane(ref paneGuid, out IVsOutputWindowPane newPane);
+
+            // Activate forces the pane to appear in the Output window dropdown immediately.
+            newPane?.Activate();
+
             return newPane;
         }
     }

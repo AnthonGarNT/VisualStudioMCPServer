@@ -37,6 +37,13 @@ namespace VisualStudioMCPserver
 
             // Initialise the Output-window logger first so all subsequent steps can use it.
             IVsOutputWindow outputWindow = await GetServiceAsync(typeof(SVsOutputWindow)) as IVsOutputWindow;
+            if (outputWindow == null)
+            {
+                // Without the output window service the logger cannot be created.
+                // This should never happen in a healthy VS installation.
+                throw new InvalidOperationException("SVsOutputWindow service is unavailable.");
+            }
+
             _logger = new VsOutputLogger(outputWindow, JoinableTaskFactory);
 
             _dte = (DTE2)await GetServiceAsync(typeof(DTE));
