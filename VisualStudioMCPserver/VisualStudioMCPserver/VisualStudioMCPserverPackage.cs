@@ -1,4 +1,5 @@
 using EnvDTE;
+using VisualStudioMCPServer.Shared;
 using EnvDTE80;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
@@ -28,6 +29,7 @@ namespace VisualStudioMCPserver
         private SolutionEvents _solutionEvents;   // field keeps the COM reference alive (DTE uses weak refs)
         private System.Diagnostics.Process _serverProcess;
         private VsOutputLogger _logger;
+        private McpServerOptions _settings;
 
         /// <inheritdoc/>
         protected override async Task InitializeAsync(CancellationToken cancellationToken,
@@ -44,13 +46,14 @@ namespace VisualStudioMCPserver
                 throw new InvalidOperationException("SVsOutputWindow service is unavailable.");
             }
 
-            _logger = new VsOutputLogger(outputWindow, JoinableTaskFactory);
+            _settings = AppSettingsReader.Read(GetServerExePath());
+            _logger   = new VsOutputLogger(outputWindow, JoinableTaskFactory, _settings);
 
             _dte = (DTE2)await GetServiceAsync(typeof(DTE));
             if (_dte == null)
             {
                 _logger.LogError("Failed to acquire DTE service — MCP server will not start.");
-                return;
+                throw new InvalidOperationException("DTE service is unavailable.");
             }
 
             // Subscribe to solution events — the field reference prevents GC of the COM object.
@@ -67,11 +70,10 @@ namespace VisualStudioMCPserver
             }
         }
 
-        // ── Solution event handlers ──────────────────────────────────────────
-
         private void OnSolutionOpened()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
+
             string solutionPath = _dte?.Solution?.FullName ?? string.Empty;
             StartServer(solutionPath);
         }
@@ -98,7 +100,7 @@ namespace VisualStudioMCPserver
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = serverExe,
-                Arguments = $"\"{solutionPath}\" {parentPid}",
+                Arguments = $"\"{solutionPath}\" {parentPid}", // Pass the solution path and parent PID as arguments
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -115,7 +117,7 @@ namespace VisualStudioMCPserver
                 _serverProcess.Start();
                 _serverProcess.BeginOutputReadLine();
                 _serverProcess.BeginErrorReadLine();
-                _logger.Log($"MCPServer started (PID {_serverProcess.Id}) for: {solutionPath}");
+                _logger.Log($"MCPServer started (PID {_serverProcess.Id}) on port {_settings.Port} for: {solutionPath}");
             }
             catch (Exception ex)
             {
@@ -176,6 +178,7 @@ namespace VisualStudioMCPserver
             if (disposing)
             {
                 StopServer();
+                _logger?.Dispose();
             }
 
             base.Dispose(disposing);

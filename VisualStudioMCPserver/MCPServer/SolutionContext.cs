@@ -6,9 +6,6 @@ namespace MCPServer;
 /// </summary>
 public static class SolutionContext
 {
-    /// <summary>
-    /// Full path to the open .sln or .slnx solution file.
-    /// </summary>
     private static string _solutionFilePath = string.Empty;
     private static readonly object _lock = new();
 

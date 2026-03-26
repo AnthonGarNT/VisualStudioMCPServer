@@ -1,4 +1,6 @@
 using MCPServer.Tools;
+using Microsoft.Extensions.Options;
+using VisualStudioMCPServer.Shared;
 
 namespace MCPServer;
 
@@ -14,7 +16,8 @@ internal sealed class Program
 
         WatchParentProcess(args, logger);
 
-        logger.LogInformation("MCP Server listening on http://localhost:5010");
+        McpServerOptions options = app.Services.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        logger.LogInformation("MCP Server listening on http://localhost:{Port}", options.Port);
         logger.LogInformation("Solution: {SolutionPath}",
             string.IsNullOrWhiteSpace(SolutionContext.SolutionFilePath)
                 ? "(none)"
@@ -73,9 +76,15 @@ internal sealed class Program
             .WithHttpTransport()
             .WithTools<SolutionTools>();
 
-        // Fixed localhost port so Claude Code can always find the server.
-        // Override with --urls or the ASPNETCORE_URLS environment variable if needed.
-        builder.WebHost.UseUrls("http://localhost:5010");
+        // Bind the McpServer config section so the port is driven by appsettings.json.
+        McpServerOptions options = builder.Configuration
+            .GetSection(McpServerOptions.SectionName)
+            .Get<McpServerOptions>() ?? new McpServerOptions();
+
+        builder.Services.Configure<McpServerOptions>(
+            builder.Configuration.GetSection(McpServerOptions.SectionName));
+
+        builder.WebHost.UseUrls($"http://localhost:{options.Port}");
 
         WebApplication app = builder.Build();
 
