@@ -2,8 +2,8 @@ using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -12,8 +12,8 @@ using Task = System.Threading.Tasks.Task;
 namespace VisualStudioMCPserver
 {
     /// <summary>
-    /// VS Package that starts / stops the MCPServer.exe side-car process
-    /// whenever a solution is opened or closed.
+    /// VS Package that starts and stops the MCPServer.exe side-car process
+    /// whenever a solution is opened or closed inside Visual Studio.
     /// </summary>
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [Guid(PackageGuidString)]
@@ -21,27 +21,37 @@ namespace VisualStudioMCPserver
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionExists_string, PackageAutoLoadFlags.BackgroundLoad)]
     public sealed class VisualStudioMCPserverPackage : AsyncPackage
     {
+        /// <summary>The GUID that uniquely identifies this package.</summary>
         public const string PackageGuidString = "e6ef9e43-b163-4ee0-811d-5dd444b2d20f";
 
         private DTE2 _dte;
         private SolutionEvents _solutionEvents;   // field keeps the COM reference alive (DTE uses weak refs)
         private System.Diagnostics.Process _serverProcess;
+        private VsOutputLogger _logger;
 
+        /// <inheritdoc/>
         protected override async Task InitializeAsync(CancellationToken cancellationToken,
                                                        IProgress<ServiceProgressData> progress)
         {
             await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
+            // Initialise the Output-window logger first so all subsequent steps can use it.
+            IVsOutputWindow outputWindow = await GetServiceAsync(typeof(SVsOutputWindow)) as IVsOutputWindow;
+            _logger = new VsOutputLogger(outputWindow, JoinableTaskFactory);
+
             _dte = (DTE2)await GetServiceAsync(typeof(DTE));
             if (_dte == null)
             {
-                throw new Exception("Failed to get DTE service.");
+                _logger.LogError("Failed to acquire DTE service — MCP server will not start.");
+                return;
             }
 
-            // Subscribe to solution events – keep the reference in a field!
+            // Subscribe to solution events — the field reference prevents GC of the COM object.
             _solutionEvents = _dte.Events.SolutionEvents;
             _solutionEvents.Opened += OnSolutionOpened;
             _solutionEvents.AfterClosing += OnSolutionClosed;
+
+            _logger.Log("Extension initialised. Waiting for a solution to open.");
 
             // If a solution is already open when the package loads, start right away.
             if (_dte.Solution != null && !string.IsNullOrEmpty(_dte.Solution.FullName))
@@ -55,9 +65,7 @@ namespace VisualStudioMCPserver
         private void OnSolutionOpened()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            var solutionPath = _dte != null && _dte.Solution != null
-                ? _dte.Solution.FullName
-                : string.Empty;
+            string solutionPath = _dte?.Solution?.FullName ?? string.Empty;
             StartServer(solutionPath);
         }
 
@@ -72,42 +80,40 @@ namespace VisualStudioMCPserver
         {
             StopServer();   // kill any previously running instance first
 
-            var serverExe = GetServerExePath();
+            string serverExe = GetServerExePath();
             if (!File.Exists(serverExe))
             {
-                Debug.WriteLine("[MCPServer] Executable not found: " + serverExe);
+                _logger.LogError($"MCPServer executable not found at: {serverExe}");
                 return;
             }
 
+            int parentPid = System.Diagnostics.Process.GetCurrentProcess().Id;
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = serverExe,
-                Arguments = $"\"{solutionPath}\" {System.Diagnostics.Process.GetCurrentProcess().Id}",
+                Arguments = $"\"{solutionPath}\" {parentPid}",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };
 
-            _serverProcess = new System.Diagnostics.Process();
-            _serverProcess.StartInfo = psi;
-            _serverProcess.EnableRaisingEvents = true;
-            _serverProcess.OutputDataReceived += (s, e) => Debug.WriteLine("[MCPServer] " + e.Data);
-            _serverProcess.ErrorDataReceived += (s, e) => Debug.WriteLine("[MCPServer ERR] " + e.Data);
-            _serverProcess.Exited += (s, e) => Debug.WriteLine("[MCPServer] Process exited.");
+            _serverProcess = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
+            _serverProcess.OutputDataReceived += (s, e) => { if (e.Data != null) _logger.Log(e.Data); };
+            _serverProcess.ErrorDataReceived += (s, e) => { if (e.Data != null) _logger.LogError(e.Data); };
+            _serverProcess.Exited += (s, e) => _logger.Log("MCPServer process exited.");
 
             try
             {
                 _serverProcess.Start();
                 _serverProcess.BeginOutputReadLine();
                 _serverProcess.BeginErrorReadLine();
+                _logger.Log($"MCPServer started (PID {_serverProcess.Id}) for: {solutionPath}");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("[MCPServer] Failed to start process: " + ex.Message);
+                _logger.LogError("Failed to start MCPServer process.", ex);
             }
-
-            Debug.WriteLine("[MCPServer] Started (PID " + _serverProcess.Id + ") for: " + solutionPath);
         }
 
         private void StopServer()
@@ -122,15 +128,20 @@ namespace VisualStudioMCPserver
                 if (!_serverProcess.HasExited)
                 {
                     _serverProcess.Kill();
+
                     if (!_serverProcess.WaitForExit(3000))
                     {
-                        Debug.WriteLine("[MCPServer] Warning: Process did not exit within the expected time limit.");
+                        _logger.LogError("MCPServer did not exit within the 3-second timeout.");
+                    }
+                    else
+                    {
+                        _logger.Log("MCPServer stopped.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("[MCPServer] Error stopping process: " + ex.Message);
+                _logger.LogError("Error while stopping MCPServer.", ex);
             }
             finally
             {
@@ -140,24 +151,24 @@ namespace VisualStudioMCPserver
         }
 
         /// <summary>
-        /// Resolves the path to MCPServer.exe.
-        /// The post-build event copies the MCPServer build output into a MCPServer\
-        /// sub-folder next to this extension's DLL, for both Debug and Release.
+        /// Resolves the full path to MCPServer.exe.
+        /// The VSIX content items deploy the MCPServer build output into a <c>MCPServer\</c>
+        /// sub-folder next to this extension's DLL for both Debug and Release configurations.
         /// </summary>
         private static string GetServerExePath()
         {
-            var extensionDir = Path.GetDirectoryName(
+            string extensionDir = Path.GetDirectoryName(
                 typeof(VisualStudioMCPserverPackage).Assembly.Location) ?? string.Empty;
 
             return Path.Combine(extensionDir, "MCPServer", "MCPServer.exe");
         }
 
+        /// <inheritdoc/>
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 StopServer();
-                _serverProcess = null;
             }
 
             base.Dispose(disposing);

@@ -8,41 +8,48 @@ internal sealed class Program
     {
         SolutionContext.SolutionFilePath = args.Length > 0 ? args[0] : string.Empty;
 
-        WatchParentProcess(args);
+        WebApplication app = BuildHost(args);
 
-        var app = BuildHost(args);
+        ILogger<Program> logger = app.Services.GetRequiredService<ILogger<Program>>();
 
-        Console.WriteLine($"MCP Server listening on http://localhost:5010");
-        Console.WriteLine($"Solution : {(string.IsNullOrWhiteSpace(SolutionContext.SolutionFilePath)
-                                            ? "(none)"
-                                            : SolutionContext.SolutionFilePath)}");
+        WatchParentProcess(args, logger);
+
+        logger.LogInformation("MCP Server listening on http://localhost:5010");
+        logger.LogInformation("Solution: {SolutionPath}",
+            string.IsNullOrWhiteSpace(SolutionContext.SolutionFilePath)
+                ? "(none)"
+                : SolutionContext.SolutionFilePath);
 
         await app.RunAsync();
     }
 
     /// <summary>
-    /// Reads the parent VS process ID from args[1] and starts a background watcher
-    /// that shuts this process down when VS exits.
+    /// Reads the parent VS process ID from <paramref name="args"/>[1] and starts a background
+    /// watcher that shuts this process down when the parent VS instance exits.
     /// </summary>
-    private static void WatchParentProcess(string[] args)
+    /// <param name="args">Command-line arguments passed at startup.</param>
+    /// <param name="logger">Logger used to report lifecycle events.</param>
+    private static void WatchParentProcess(string[] args, ILogger<Program> logger)
     {
-        if (args.Length < 2 || !int.TryParse(args[1], out var parentPid))
+        if (args.Length < 2 || !int.TryParse(args[1], out int parentPid))
+        {
             return;
+        }
 
         _ = Task.Run(async () =>
         {
             try
             {
-                var parent = System.Diagnostics.Process.GetProcessById(parentPid);
+                System.Diagnostics.Process parent = System.Diagnostics.Process.GetProcessById(parentPid);
                 await parent.WaitForExitAsync();
             }
-            catch
+            catch (Exception ex)
             {
-                // Process already gone — fall through to exit.
+                logger.LogWarning(ex, "Could not find parent VS process (PID {ParentPid}) — it may have already exited.", parentPid);
             }
             finally
             {
-                Console.WriteLine("[MCPServer] Parent VS process exited — shutting down.");
+                logger.LogInformation("Parent VS process exited — shutting down MCP Server.");
                 Environment.Exit(0);
             }
         });
@@ -51,20 +58,26 @@ internal sealed class Program
     /// <summary>
     /// Configures and builds the ASP.NET Core / MCP web application.
     /// </summary>
+    /// <param name="args">Command-line arguments forwarded to the host builder.</param>
+    /// <returns>A fully configured <see cref="WebApplication"/> ready to run.</returns>
     private static WebApplication BuildHost(string[] args)
     {
-        var builder = WebApplication.CreateBuilder(args);
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+        builder.Logging
+            .ClearProviders()
+            .AddConsole();
 
         builder.Services
             .AddMcpServer()
             .WithHttpTransport()
             .WithTools<SolutionTools>();
 
-        // Fixed localhost port so Claude Code can find us reliably.
-        // Override with --urls or ASPNETCORE_URLS if needed.
+        // Fixed localhost port so Claude Code can always find the server.
+        // Override with --urls or the ASPNETCORE_URLS environment variable if needed.
         builder.WebHost.UseUrls("http://localhost:5010");
 
-        var app = builder.Build();
+        WebApplication app = builder.Build();
 
         app.MapMcp();   // registers /sse and /messages endpoints
 

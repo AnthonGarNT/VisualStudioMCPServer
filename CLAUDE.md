@@ -41,11 +41,40 @@
 - Never use `.Result` or `.Wait()` — always `await`
 - Use `ConfigureAwait(false)` in library/non-UI code
 
+## Logging
+
+- **Never** use `Debug.WriteLine`, `Trace.WriteLine`, or `Console.WriteLine` for diagnostics
+- **MCPServer (.NET 8):** inject `ILogger<T>` via constructor; the ASP.NET Core host registers it automatically
+- **VSIX (.NET Framework 4.7.2):** use `VsOutputLogger` which wraps `IVsOutputWindowPane` (creates a named "MCP Server" pane in the VS Output window)
+- Use structured log messages with named placeholders: `_logger.LogInformation("Server started on {Port}", port)`
+- Choose the correct level:
+  - `LogDebug` — verbose / development detail
+  - `LogInformation` — normal operational flow
+  - `LogWarning` — recoverable / unexpected but non-fatal
+  - `LogError` — failures; always pass the exception object so the stack trace is preserved
+
 ## Error Handling
 
 - Never swallow exceptions silently with an empty `catch` block — at minimum log the error
 - Catch specific exceptions, not `Exception` unless re-throwing or at a top-level boundary
 - Use `finally` to release resources; prefer `using` declarations over manual `Dispose` calls
+
+## Braces
+
+- Always use curly braces for every block body — `if`, `else`, `for`, `foreach`, `while`, `using`, `try`, `catch`, `finally` — even when the body is a single statement
+- Never omit braces for one-liners; this prevents accidental bugs when adding a second statement later
+
+```csharp
+// Correct
+if (condition)
+{
+    DoSomething();
+}
+
+// Wrong
+if (condition)
+    DoSomething();
+```
 
 ## Classes & Structure
 
