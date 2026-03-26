@@ -9,5 +9,24 @@ public static class SolutionContext
     /// <summary>
     /// Full path to the open .sln or .slnx solution file.
     /// </summary>
-    public static string SolutionFilePath { get; set; } = string.Empty;
+    private static string _solutionFilePath = string.Empty;
+    private static readonly object _lock = new();
+
+    public static string SolutionFilePath
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _solutionFilePath;
+            }
+        }
+        set
+        {
+            lock (_lock)
+            {
+                _solutionFilePath = value;
+            }
+        }
+    }
 }

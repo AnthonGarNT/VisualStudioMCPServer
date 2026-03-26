@@ -33,7 +33,10 @@ namespace VisualStudioMCPserver
             await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             _dte = (DTE2)await GetServiceAsync(typeof(DTE));
-            if (_dte == null) return;
+            if (_dte == null)
+            {
+                throw new Exception("Failed to get DTE service.");
+            }
 
             // Subscribe to solution events – keep the reference in a field!
             _solutionEvents = _dte.Events.SolutionEvents;
@@ -42,7 +45,9 @@ namespace VisualStudioMCPserver
 
             // If a solution is already open when the package loads, start right away.
             if (_dte.Solution != null && !string.IsNullOrEmpty(_dte.Solution.FullName))
+            {
                 StartServer(_dte.Solution.FullName);
+            }
         }
 
         // ── Solution event handlers ──────────────────────────────────────────
@@ -91,23 +96,36 @@ namespace VisualStudioMCPserver
             _serverProcess.ErrorDataReceived += (s, e) => Debug.WriteLine("[MCPServer ERR] " + e.Data);
             _serverProcess.Exited += (s, e) => Debug.WriteLine("[MCPServer] Process exited.");
 
-            _serverProcess.Start();
-            _serverProcess.BeginOutputReadLine();
-            _serverProcess.BeginErrorReadLine();
+            try
+            {
+                _serverProcess.Start();
+                _serverProcess.BeginOutputReadLine();
+                _serverProcess.BeginErrorReadLine();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("[MCPServer] Failed to start process: " + ex.Message);
+            }
 
             Debug.WriteLine("[MCPServer] Started (PID " + _serverProcess.Id + ") for: " + solutionPath);
         }
 
         private void StopServer()
         {
-            if (_serverProcess == null) return;
+            if (_serverProcess == null)
+            {
+                return;
+            }
 
             try
             {
                 if (!_serverProcess.HasExited)
                 {
                     _serverProcess.Kill();
-                    _serverProcess.WaitForExit(3000);
+                    if (!_serverProcess.WaitForExit(3000))
+                    {
+                        Debug.WriteLine("[MCPServer] Warning: Process did not exit within the expected time limit.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -136,7 +154,12 @@ namespace VisualStudioMCPserver
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) StopServer();
+            if (disposing)
+            {
+                StopServer();
+                _serverProcess = null;
+            }
+
             base.Dispose(disposing);
         }
     }
